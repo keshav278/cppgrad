@@ -132,20 +132,148 @@ ModelContext* modelContextCreate() {
 
 }
 
-void graphCompile(ModelContext* ctx) {
+void graphCompute(TopoGraph* graph) {
+    
+    for (auto node : graph->nodes) {   
+        Node* a = node->inputs[0];
+        Node* b = nullptr;
+        if(node->inputs.size() == 2){
+            b = node->inputs[1];
+        }
+        bool res = true;
+        switch(node->operation) {
+            case Op::NONE:
+            case Op::CREATE: break;
+
+            case Op::UNARY_START: break;
+
+            case Op::RELU: {
+                res &= reluMat(&node->value, &a->value);
+            } break;
+            case Op::SOFTMAX: {
+                res &= softmaxMat(&node->value, &a->value);
+            } break;
+
+            case Op::BINARY_START: break;
+
+            case Op::ADD: {
+                if(b == nullptr) {res = false; break;}
+                res &= addMat(&node->value, &a->value, &b->value); 
+            } break;
+            case Op::SUB: {
+                if(b == nullptr) {res = false; break;}
+                res &= subMat(&node->value, &a->value, &b->value); 
+            } break;
+            case Op::MATMUL: {
+                if(b == nullptr) {res = false; break;}
+                res &= mulMat(&node->value, &a->value, &b->value, true,false,false); 
+            } break;
+            case Op::CROSS_ENTROPY: {
+                if(b == nullptr) {res = false; break;}
+                res &= crossEntropyMat(&node->value, &a->value, &b->value);
+            } break;
+
+        }
+        if(!res)
+            std::cout << "Error in graph compute\n";
+
+    }
+}
+
+void graphComputeGradients(TopoGraph* graph) {
+    for(auto cur : graph->nodes) {
+        if(!(cur->flags & NodeFlags::REQUIRES_GRAD)){
+            continue;
+        }
+        if(cur->flags & NodeFlags::PARAMETER){
+            continue;
+        }
+        cur->grad.clear();
+    }
+    graph->nodes[graph->size - 1]->grad.fill(1.0f); // df/df = 1
+
+    for(auto i = graph->size - 1; i >= 0; i--) {
+        auto cur = graph->nodes[i];
+
+        if(!(cur->flags & NodeFlags::REQUIRES_GRAD)) {
+            continue;
+        }
+
+        auto a = cur->inputs[0];
+        auto b = cur->inputs.size() == 2 ? cur->inputs[1] : nullptr;
+        auto a_requires_grad = a->flags & NodeFlags::REQUIRES_GRAD;
+        auto b_requires_grad = b ? b->flags & NodeFlags::REQUIRES_GRAD : 0;
+
+        if(!a_requires_grad){
+            if(!b)
+                continue;
+            if(!b_requires_grad)
+                continue;
+        }
+        bool res = true;
+        switch(cur->operation){
+            case Op::NONE:
+            case Op::CREATE: break;
+
+            case Op::UNARY_START: break;
+
+            case Op::RELU: {
+                // g(a) = max(0, a)
+                // df/da += df/dg . dg / da = df/dg if a > 0 else 0
+                res &= a_requires_grad ? reluMatAddGradient(&a->grad, &a->value, &cur->grad) : true;
+            } break;
+            case Op::SOFTMAX: {
+                // g(a) = softmax(a), a -> Rn
+                // dg/da = J -> Rnxn where Jij = softmax(ai) * ((i == j) - softmax(aj))
+                // df/da += dg/da @ df/dg 
+                res &= a_requires_grad ? softmaxMatAddGradient(&a->grad, &a->value, &cur->grad) : true;
+            } break;
+
+            case Op::BINARY_START: break;
+
+            case Op::ADD: {
+                if(b == nullptr) {res = false; break;}
+                // g(a,b) = a + b
+                // df/da += df/dg . dg/da = df/dg (cur->grad)
+                // df/db += df/dg . dg/db = df/dg
+                res &= a_requires_grad ? (&a->grad, &a->grad, &cur->grad) : true;
+                res &= b_requires_grad ? (&b->grad, &b->grad, &cur->grad) : true;
+            } break;
+            case Op::SUB: {
+                if(b == nullptr) {res = false; break;}
+                // g(a,b) = a - b
+                // df/da += df/dg . dg/da = df/dg (cur->grad)
+                // df/db += df/dg . dg/db = -df/dg
+                res &= a_requires_grad ? addMat(&a->grad, &a->grad, &cur->grad) : true;
+                res &= b_requires_grad ? subMat(&b->grad, &b->grad, &cur->grad) : true;
+            } break;
+            case Op::MATMUL: {
+                if(b == nullptr) {res = false; break;}
+                // g(a, b) = a @ b
+                // df/da += df/dg . dg/da = df/dg @ bT
+                // df/db += df/dg . dg/db = aT @ df/dg
+                res &= a_requires_grad ? mulMat(&a->grad , &cur->grad , &b->value, 0, 0, 1) : true;    
+                res &= b_requires_grad ? mulMat(&b->grad, &a->value, &cur->grad, 0, 1, 0) : true;
+            } break;
+            case Op::CROSS_ENTROPY: {
+                if(b == nullptr) {res = false; break;}
+                // g(a, b) = -b . ln(a)
+                // df/da += df/dg . dg/da = df/dg . - b / a
+                // df/db += df/dg . dg/db = df/dg . -ln(a)
+                res &= crossEntropyMatAddGradient(&a->value,&b->value, a_requires_grad ? &a->grad : nullptr,
+                     b_requires_grad ? &b->grad : nullptr, &cur->grad);
+            } break;
+
+        }
+
+    }
 
 }
 
-void graphFeedForward(ModelContext* ctx) {
+void modelContextFeedForward(ModelContext* ctx) {
 
 }
 
-void modelContextCompute(ModelContext* ctx) {
 
-}
-
-void modelContextComputeGradients(ModelContext* ctx) {
-
-}
 
 

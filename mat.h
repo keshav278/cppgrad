@@ -69,6 +69,11 @@ bool reluMat(Matrix* out, const Matrix* in);
 bool softmaxMat(Matrix* out, const Matrix* in);
 bool crossEntropyMat(Matrix* out, const Matrix* pred, const Matrix* y);
 
+bool reluMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad);
+bool softmaxMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad);
+bool crossEntropyMatAddGradient(const Matrix* pred, const Matrix* y,
+     Matrix* pred_grad, Matrix* y_grad, const Matrix* grad);
+
 void Matrix::clear() {
     std::fill(data.begin(), data.end(), 0);
 }
@@ -207,5 +212,62 @@ bool crossEntropyMat(Matrix* out, const Matrix* pred, const Matrix* y) {
     for(auto i = 0; i < out->data.size(); i++) {
         out->data[i] = (-1.0f) * y->data[i] * logf(pred->data[i]);
     }
+    return true;
+}
+
+bool reluMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad) {
+    if(out->rows != in->rows || out->cols != in->cols) {
+        return false;
+    }
+    if(out->rows != grad->rows || out->cols != grad->cols) {
+        return false;
+    }    
+    for(auto i = 0; i < in->data.size(); i++) {
+        out->data[i] += in->data[i] > 0.0f ? grad->data[i] : 0.0f;
+    }
+    return true;    
+}
+
+bool crossEntropyMatAddGradient(const Matrix* pred, const Matrix* y,
+     Matrix* pred_grad, Matrix* y_grad, const Matrix* grad) {
+    if (pred->rows != y->rows || pred->cols != pred->cols) {
+        return false;
+    }
+
+    if(y_grad) {
+        if (y->rows != y_grad->rows || y->cols != y_grad->cols) {
+            return false;
+        }
+
+        for(auto i = 0; i < y_grad->data.size(); i++) {
+            y_grad->data[i] += -logf(pred->data[i]) * grad->data[i];
+        }
+    }
+
+    if(pred_grad) {
+        if (pred->rows != pred_grad->rows || pred->cols != pred_grad->cols) {
+            return false;
+        }
+
+        for(auto i = 0; i < pred_grad->data.size(); i++) {
+            pred_grad->data[i] += grad->data[i] * (-1.0f) * y->data[i] / pred->data[i];
+        }
+    }
+}
+
+bool softmaxMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad) {
+    if(in->rows == 1 && in->cols == 1) {
+        return false;
+    }
+    size_t jacobian_size = std::max(in->rows, in->cols);
+    Matrix jacobian(jacobian_size, jacobian_size);
+    
+    for(auto i = 0; i < jacobian_size; i++) {
+        for (auto j = 0; j < jacobian_size; j++) {
+            jacobian.data[i * jacobian_size + j] =
+            in->data[i] * ((i == j) - in->data[j]);
+        }
+    }
+    auto res = mulMat(out, &jacobian, grad, 0, 0, 0);
     return true;
 }
