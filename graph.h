@@ -1,13 +1,13 @@
 #include "mat.h"
 
 enum NodeFlags {
-    NONE = 0,
+    NO_FLAG = 0,
 
     REQUIRES_GRAD     = (1 << 0),
     PARAMETER         = (1 << 1),
     INPUT             = (1 << 2),
     OUTPUT            = (1 << 3),
-    OUTPUT_LABEL  = (1 << 4),
+    OUTPUT_LABEL      = (1 << 4),
     LOSS_FN           = (1 << 5)
 
 };
@@ -41,44 +41,50 @@ struct Node {
     Matrix value{};
     Matrix grad{};
     Op operation{};
-    std::vector<Node*> inputs = std::vector<Node*>();
+    std::vector<Node*> inputs;
 };
 
 struct TopoGraph {
     size_t size{};
-    std::vector<Node*> nodes = std::vector<Node*>();
+    std::vector<Node*> nodes;
 };
 
 struct ModelContext {
       size_t num_nodes{};
-      
-      Node input{};
-      Node output{};
-      Node label{};
-      Node loss{};
+
+      std::vector<std::unique_ptr<Node>> nodes;
+
+      Node* input{};
+      Node* output{};
+      Node* label{};
+      Node* loss{};
 
       TopoGraph forward_pass{};
       TopoGraph loss_fn{};
 };
 
-Node createNodeForCtx(ModelContext* ctx, size_t rows, size_t cols,
+ Node* createNodeForCtx(ModelContext* ctx, size_t rows, size_t cols,
                 NodeFlags flags) {
-    Node out;
-    out.index = ctx->num_nodes++;
-    out.flags = flags;
-    out.value = Matrix(rows,cols);
-    out.operation = Op::CREATE;
+    auto out = std::make_unique<Node>();
+    out->index = ctx->num_nodes++;
+    out->flags = flags;
+    out->value = Matrix(rows,cols);
+    out->operation = Op::CREATE;
     if(flags & NodeFlags::REQUIRES_GRAD) {
-        out.grad = Matrix(rows,cols);
+        out->grad = Matrix(rows,cols);
     }
-    if(flags & NodeFlags::INPUT) ctx->input = out;
-    if(flags & NodeFlags::OUTPUT) ctx->output = out;
-    if(flags & NodeFlags::OUTPUT_LABEL) ctx->label = out;
-    if(flags & NodeFlags::LOSS_FN) ctx->loss = out;
-    return out;
+
+    Node* out_obj = out.get();
+    ctx->nodes.push_back(std::move(out));
+
+    if(flags & NodeFlags::INPUT) (ctx->input) = out_obj;
+    else if(flags & NodeFlags::OUTPUT) (ctx->output) = out_obj;
+    else if(flags & NodeFlags::OUTPUT_LABEL) (ctx->label) = out_obj;
+    else if(flags & NodeFlags::LOSS_FN) (ctx->loss) = out_obj;
+    return out_obj;
 }
 
-Node createOpNode(ModelContext* ctx, size_t rows, size_t cols,
+Node* createOpNode(ModelContext* ctx, size_t rows, size_t cols,
      NodeFlags flags, Op op, Node* a, Node* b = nullptr) {
 
     if(a->flags & NodeFlags::REQUIRES_GRAD) {
@@ -87,13 +93,13 @@ Node createOpNode(ModelContext* ctx, size_t rows, size_t cols,
     if(b != nullptr && b->flags & NodeFlags::REQUIRES_GRAD) {
         flags = (NodeFlags)(flags | NodeFlags::REQUIRES_GRAD);
     }   
-    Node out = createNodeForCtx(ctx, rows, cols, flags);
+    Node* out = createNodeForCtx(ctx, rows, cols, flags);
     
-    out.inputs.push_back(a);
+    out->inputs.push_back(a);
     if(b != nullptr) {
-        out.inputs.push_back(b);
+        out->inputs.push_back(b);
     }
-    out.operation = op;
+    out->operation = op;
     return out;
 }
 
@@ -125,10 +131,6 @@ TopoGraph graphCreate(ModelContext* ctx, Node* out_node) {
     out.size = toposort.size();
     out.nodes = toposort;
     return out;
-
-}
-
-ModelContext* modelContextCreate() {
 
 }
 
@@ -270,8 +272,17 @@ void graphComputeGradients(TopoGraph* graph) {
 
 }
 
-void modelContextFeedForward(ModelContext* ctx) {
+void modelContextCompile(ModelContext* ctx) {
+    if(ctx->output) {
+        ctx->forward_pass = graphCreate(ctx,ctx->output);
+    }
+    if(ctx->loss) {
+        ctx->loss_fn = graphCreate(ctx, ctx->loss);
+    }
+}
 
+void modelContextFeedForward(ModelContext* ctx) {
+    graphCompute(&ctx->forward_pass);
 }
 
 

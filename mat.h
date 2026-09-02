@@ -50,6 +50,7 @@ struct Matrix {
 
     void clear();
     void fill(float x);
+    void fill_rand_uniform(float upper, float lower);
     void scale(float scale);
     float sum() const;
     void display();
@@ -82,6 +83,15 @@ void Matrix::fill(float x) {
     std::fill(data.begin(), data.end(), x);
 }
 
+void Matrix::fill_rand_uniform(float lower, float upper) {
+    std::random_device rd;
+    std::mt19937 generator(rd());
+    std::uniform_real_distribution<float> dist(lower, upper);
+    for(auto& ele : data) {
+        ele = dist(generator);
+    }
+}
+
 void Matrix::scale(float scale) {
     for(auto& a : data) {
         a *= scale;
@@ -89,7 +99,7 @@ void Matrix::scale(float scale) {
 }
 
 float Matrix::sum() const {
-    return std::reduce(data.begin(), data.end(), 0.0F);
+    return std::accumulate(data.begin(), data.end(), 0.0f);
 }
 
 void Matrix::display() {
@@ -253,6 +263,7 @@ bool crossEntropyMatAddGradient(const Matrix* pred, const Matrix* y,
             pred_grad->data[i] += grad->data[i] * (-1.0f) * y->data[i] / pred->data[i];
         }
     }
+    return true;
 }
 
 bool softmaxMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad) {
