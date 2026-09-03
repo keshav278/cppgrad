@@ -201,12 +201,12 @@ int main()
     std::cout << "compiling model..\n";
     modelContextCompile(ctx.get());
 
-    ctx.get()->input->value.data = std::vector<float>(test_images.data.begin() + 784 * 10, test_images.data.begin() + 784 * 11);
+    ctx.get()->input->value.data = std::vector<float>(test_images.data.begin() + 784 * 1, test_images.data.begin() + 784 * 2);
     std::cout << "doing a forward pass..\n";
     modelContextFeedForward(ctx.get());
 
     std::cout << "\n\npretraining output\n";
-    for (int i = 10; i < 20; i++) {
+    for (int i = 0; i < 10; i++) {
         std::cout << std::setprecision(4) << ctx.get()->output->value.data[i] << " ";
     }
 
@@ -222,8 +222,13 @@ int main()
     std::cout << "\n\nTraining model...\n\n";
     modelTrain(ctx.get(), &params);
 
+    ctx.get()->input->value.data = std::vector<float>(test_images.data.begin() + 784 * 1, test_images.data.begin() + 784 * 2);
+
+    modelContextFeedForward(ctx.get());
+
     std::cout << "\n\n posttraining output\n";
-    for (int i = 10; i < 20; i++) {
+    for (int i = 0; i < 10; i++) {
         std::cout << std::setprecision(4) << ctx.get()->output->value.data[i] << " ";
     }
+    std::cout << std::endl << "Your digit is " << ctx.get()->output->value.argmax() << std::endl;
 }

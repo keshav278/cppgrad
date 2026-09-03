@@ -111,20 +111,32 @@ TopoGraph graphCreate(ModelContext* ctx, Node* out_node) {
     stack.push_back(out_node);
     //dfs
     while(stack.size() > 0){
-        auto cur = stack.back(); 
+        auto cur = stack.back();
+        stack.pop_back(); 
         if(cur->index >= ctx->num_nodes) continue;
         //base
         if(visited[cur->index]){
             toposort.push_back(cur);
-            stack.pop_back();
             continue;
         }
         //visit
         visited[cur->index] = true;
+        stack.push_back(cur);
 
         //recurse
         for(auto node: cur->inputs) {
-            stack.push_back(node);
+            if(node->index >= ctx->num_nodes) continue;
+            if(visited[node->index]) continue;
+
+            bool already_on_stack = false;
+            for(auto ele: stack) {
+                if(ele->index == node->index){
+                    already_on_stack = true;
+                    break;
+                }
+            }
+            if(!already_on_stack)
+                stack.push_back(node);
         }
     }
     TopoGraph out;
