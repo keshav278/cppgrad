@@ -62,12 +62,118 @@ void createMnistModel(ModelContext* ctx) {
 
     Node* label = createNodeForCtx(ctx, 10, 1, NodeFlags::OUTPUT_LABEL);
 
-    Node* loss = createOpNode(ctx, 1, 1,
-         NodeFlags::LOSS_FN, Op::CROSS_ENTROPY, label, output);
+    Node* loss = createOpNode(ctx, 10, 1,
+         NodeFlags::LOSS_FN, Op::CROSS_ENTROPY, output, label);
 
     
 }
-void modelTrain(ModelContext* ctx, const TrainingParams* params);
+void modelTrain(ModelContext* ctx, const TrainingParams* params) {
+     Matrix* train_images = params->train_images;
+     Matrix* train_labels = params->train_labels;
+     Matrix* test_images = params->test_images;
+     Matrix* test_labels = params->test_labels;
+
+     size_t num_examples = train_images->rows;
+     size_t input_size = train_images->cols;
+     size_t output_size = train_labels->cols;
+     size_t num_tests = test_images->rows;
+
+     size_t num_batches = num_examples / params->batch_size;
+
+     std::vector<size_t> indices(num_examples);
+     std::iota(indices.begin(), indices.end(), 0);
+     std::random_device rd;
+     std::mt19937 g(rd());
+     
+     //stochastic gradient descent
+     for(auto epoch = 0; epoch < params->epochs; epoch++){
+          //shuffle access to the examples
+          std::shuffle(indices.begin(), indices.end(), g);
+
+          
+
+          for(auto batch = 0; batch < num_batches; batch++) {
+               //clear gradients for all parameters
+               for(auto i = 0; i < ctx->loss_fn.size; i++) {
+                    Node* cur = ctx->loss_fn.nodes[i];
+                    if(cur->flags & NodeFlags::PARAMETER) {
+                         cur->grad.clear();
+                    }
+               }
+               float avg_cost = 0.0f;
+
+               for(auto i = 0; i < params->batch_size; i++) {
+                    auto access_index = batch * params->batch_size + i;
+                    auto example_index = indices[access_index];
+
+                    ctx->input->value.data = 
+                    std::vector<float>(train_images->data.begin() + example_index * input_size,
+                     train_images->data.begin() + (example_index + 1) * input_size);
+
+                    ctx->label->value.data = 
+                    std::vector<float>(train_labels->data.begin() + example_index * output_size,
+                     train_labels->data.begin() + (example_index + 1) * output_size); 
+
+                    graphCompute(&ctx->loss_fn);
+
+                    graphComputeGradients(&ctx->loss_fn);
+
+                    avg_cost += ctx->loss->value.sum();
+               }
+               avg_cost /= (float)params->batch_size;
+
+               for(auto i = 0; i < ctx->loss_fn.size; i++) {
+                    Node* cur = ctx->loss_fn.nodes[i];
+
+                    if(cur->flags & NodeFlags::PARAMETER) {
+                         cur->grad.scale(params->learning_rate / params->batch_size);
+                         subMat(&cur->value, &cur->value, &cur->grad);
+                    }
+               }
+
+               std::printf("Epoch: %d / %d, Batch: %d / %d, Avg Cost: %.4f\r",
+               epoch + 1, params->epochs, batch + 1, num_batches, avg_cost
+               );
+          }
+          std::cout << "\n";
+     }
+
+     //evaluating on test data
+     size_t correct = 0;
+     float avg_cost = 0.0f;
+
+     for(auto i = 0; i < num_tests; i++) {
+          ctx->input->value.data = 
+          std::vector<float>(test_images->data.begin() + i * input_size,
+               test_images->data.begin() + (i + 1) * input_size);
+
+          ctx->label->value.data = 
+          std::vector<float>(test_labels->data.begin() + i * output_size,
+               test_labels->data.begin() + (i + 1) * output_size); 
+
+          graphCompute(&ctx->loss_fn);
+
+          avg_cost += ctx->loss->value.sum();
+          correct += ctx->label->value.argmax() == ctx->output->value.argmax();
+     }
+     avg_cost /= (float)num_tests;
+
+     std::cout<<"\nTest Completed!\n";
+     printf("Accuracy: %d / %d (%.2f%%), Average Cost: %.4f\n",
+     correct, num_tests, (float) correct / num_tests * 100.0f, avg_cost);
+}
+
+void draw_mnist_digit(float* data) {
+    for (uint32_t y = 0; y < 28; y++) {
+        for (uint32_t x = 0; x < 28; x++) {
+            float num = data[x + y * 28];
+            uint32_t col = 232 + (uint32_t)(num * 23);
+            printf("\x1b[48;5;%dm  ", col);
+        }
+        printf("\n");
+    }
+    printf("\x1b[0m");
+}
 
 
 int main()
@@ -77,8 +183,17 @@ int main()
     Matrix train_labels = Matrix(60000, 10, "y_train.bin");
     Matrix test_labels = Matrix(10000, 10, "y_test.bin");
 
-    for (int i = 100; i < 125; i ++) {
-        std::cout << train_labels.data[i] << " ";
+     if(train_images.data.size() != 60000 * 784 ||
+        train_labels.data.size() != 60000 * 10 ||
+        test_images.data.size() != 10000 * 784 ||
+        test_labels.data.size() != 10000 * 10) {
+          std::cerr << "MNIST data files are missing or have unexpected sizes.\n";
+          return 1;
+     }
+
+    draw_mnist_digit(test_images.data.data() + 784);
+    for (int i = 10; i < 20; i++) {
+        std::cout << test_labels.data[i] << " ";
     }
     auto ctx = std::make_unique<ModelContext>();
     std::cout << "\ncreating model..\n";
@@ -86,12 +201,29 @@ int main()
     std::cout << "compiling model..\n";
     modelContextCompile(ctx.get());
 
-    ctx.get()->input->value.data = std::vector<float>(train_images.data.begin(), train_images.data.begin() + 784);
+    ctx.get()->input->value.data = std::vector<float>(test_images.data.begin() + 784 * 10, test_images.data.begin() + 784 * 11);
     std::cout << "doing a forward pass..\n";
     modelContextFeedForward(ctx.get());
 
     std::cout << "\n\npretraining output\n";
-    for (int i = 0; i < 10; i++) {
-        std::cout << ctx.get()->output->value.data[i] << " ";
+    for (int i = 10; i < 20; i++) {
+        std::cout << std::setprecision(4) << ctx.get()->output->value.data[i] << " ";
+    }
+
+    TrainingParams params{
+         &train_images,
+         &train_labels,
+         &test_images,
+         &test_labels,
+         3,
+         50,
+         0.01f
+    };
+    std::cout << "\n\nTraining model...\n\n";
+    modelTrain(ctx.get(), &params);
+
+    std::cout << "\n\n posttraining output\n";
+    for (int i = 10; i < 20; i++) {
+        std::cout << std::setprecision(4) << ctx.get()->output->value.data[i] << " ";
     }
 }

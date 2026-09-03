@@ -137,6 +137,11 @@ TopoGraph graphCreate(ModelContext* ctx, Node* out_node) {
 void graphCompute(TopoGraph* graph) {
     
     for (auto node : graph->nodes) {   
+
+        if (node->inputs.empty()) {
+            continue;
+        }
+
         Node* a = node->inputs[0];
         Node* b = nullptr;
         if(node->inputs.size() == 2){
@@ -194,10 +199,14 @@ void graphComputeGradients(TopoGraph* graph) {
     }
     graph->nodes[graph->size - 1]->grad.fill(1.0f); // df/df = 1
 
-    for(auto i = graph->size - 1; i >= 0; i--) {
+    for(long int i = graph->size - 1; i >= 0; i--) {
         auto cur = graph->nodes[i];
 
         if(!(cur->flags & NodeFlags::REQUIRES_GRAD)) {
+            continue;
+        }
+
+        if (cur->inputs.empty()) {
             continue;
         }
 
@@ -228,7 +237,7 @@ void graphComputeGradients(TopoGraph* graph) {
                 // g(a) = softmax(a), a -> Rn
                 // dg/da = J -> Rnxn where Jij = softmax(ai) * ((i == j) - softmax(aj))
                 // df/da += dg/da @ df/dg 
-                res &= a_requires_grad ? softmaxMatAddGradient(&a->grad, &a->value, &cur->grad) : true;
+                res &= a_requires_grad ? softmaxMatAddGradient(&a->grad, &cur->value, &cur->grad) : true;
             } break;
 
             case Op::BINARY_START: break;
@@ -238,8 +247,8 @@ void graphComputeGradients(TopoGraph* graph) {
                 // g(a,b) = a + b
                 // df/da += df/dg . dg/da = df/dg (cur->grad)
                 // df/db += df/dg . dg/db = df/dg
-                res &= a_requires_grad ? (&a->grad, &a->grad, &cur->grad) : true;
-                res &= b_requires_grad ? (&b->grad, &b->grad, &cur->grad) : true;
+                res &= a_requires_grad ? addMat(&a->grad, &a->grad, &cur->grad) : true;
+                res &= b_requires_grad ? addMat(&b->grad, &b->grad, &cur->grad) : true;
             } break;
             case Op::SUB: {
                 if(b == nullptr) {res = false; break;}

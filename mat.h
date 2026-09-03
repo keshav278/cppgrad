@@ -53,6 +53,7 @@ struct Matrix {
     void fill_rand_uniform(float upper, float lower);
     void scale(float scale);
     float sum() const;
+    size_t argmax();
     void display();
 
     size_t rows, cols;
@@ -102,6 +103,18 @@ float Matrix::sum() const {
     return std::accumulate(data.begin(), data.end(), 0.0f);
 }
 
+size_t Matrix::argmax() {
+    size_t size = rows * cols;
+
+    size_t max_i = 0;
+    for(auto i = 0; i < size; i++) {
+        if(data[i] > data[max_i]) {
+            max_i = i;
+        }
+    }
+    return max_i;
+}
+
 void Matrix::display() {
     for(auto i = 0; i < rows * cols; i++) {
         for(auto j = 0; j < cols; j++) {
@@ -137,7 +150,7 @@ bool subMat(Matrix* out, const Matrix* a, const Matrix* b) {
     if(a->rows != b->rows || a->cols != b->cols) {
         return false;
     }
-    if(out->rows != a->rows || out->cols != out->rows) {
+    if(out->rows != a->rows || out->cols != a->cols) {
         return false;
     }
     size_t num_ele = out->cols * out->rows;
@@ -213,7 +226,7 @@ bool softmaxMat(Matrix* out, const Matrix* in) {
 }
 
 bool crossEntropyMat(Matrix* out, const Matrix* pred, const Matrix* y) {
-    if (pred->rows != y->rows || pred->cols != pred->cols) {
+    if (pred->rows != y->rows || pred->cols != y->cols) {
         return false;
     }
     if(out->rows != y->rows || out->cols != y->cols) {
@@ -240,7 +253,7 @@ bool reluMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad) {
 
 bool crossEntropyMatAddGradient(const Matrix* pred, const Matrix* y,
      Matrix* pred_grad, Matrix* y_grad, const Matrix* grad) {
-    if (pred->rows != y->rows || pred->cols != pred->cols) {
+    if (pred->rows != y->rows || pred->cols != y->cols) {
         return false;
     }
 
@@ -279,6 +292,5 @@ bool softmaxMatAddGradient(Matrix* out, const Matrix* in, const Matrix* grad) {
             in->data[i] * ((i == j) - in->data[j]);
         }
     }
-    auto res = mulMat(out, &jacobian, grad, 0, 0, 0);
-    return true;
+    return mulMat(out, &jacobian, grad, 0, 0, 0);
 }
