@@ -1,6 +1,6 @@
 # cppgrad
 
-A small C++20 automatic-differentiation and neural-network experiment. The included MNIST example trains a 784-16-16-10 residual MLP using ReLU activations, softmax, cross-entropy loss, and stochastic gradient descent.
+A small C++20 automatic-differentiation and neural-network experiment. The included MNIST example trains a 784-16-16-10 residual MLP using ReLU activations, softmax, cross-entropy loss, and stochastic gradient descent. Based on [MagicalBat's YT vid](https://youtu.be/hL_n_GljC0I)
 
 ## Requirements
 
@@ -28,3 +28,5 @@ The data script creates `X_train.bin`, `y_train.bin`, `X_test.bin`, and `y_test.
 - `graph.h`: computation graph, forward pass, and gradients
 - `mnist.cpp`: model definition, training loop, and executable entry point
 - `get_mnist_data.py`: MNIST download and binary conversion
+
+
