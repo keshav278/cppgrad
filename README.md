@@ -28,5 +28,6 @@ The data script creates `X_train.bin`, `y_train.bin`, `X_test.bin`, and `y_test.
 - `graph.h`: computation graph, forward pass, and gradients
 - `mnist.cpp`: model definition, training loop, and executable entry point
 - `get_mnist_data.py`: MNIST download and binary conversion
+- `mnist_gui.cpp`: mnist.cpp with gui for drawing input digit using SFML
 
 
